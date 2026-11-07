@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="utf-8"><title>ระบบงานผู้ป่วยใน (IPD) – Supabase</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1d2330;--mut:#6b7280;--ac:#0f766e;--bd:#d9dde3;--wr:#b91c1c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14181f;--card:#1e242e;--tx:#e8ebf0;--mut:#98a2b3;--ac:#2dd4bf;--bd:#333c4a;--wr:#f87171;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Sarabun","Noto Sans Thai",system-ui,sans-serif}
+header{padding:12px 16px;background:var(--ac);color:#fff;font-weight:700;display:flex;justify-content:space-between}
+main{max-width:1000px;margin:auto;padding:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+input,select,textarea,button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;width:100%}
+button{width:auto;cursor:pointer;background:var(--ac);color:#fff;border:0;padding:6px 12px}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--ac)}button.r{background:var(--wr)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+label{font-size:13px;color:var(--mut);display:block}
+.tabs{display:flex;gap:4px;overflow-x:auto;margin-bottom:10px}.tabs button{white-space:nowrap}
+.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid var(--bd);padding:6px;text-align:left;vertical-align:top}
+.ent{border-top:1px solid var(--bd);padding:8px 0}.ent small{color:var(--mut)}.off{opacity:.5;text-decoration:line-through}
+@media print{header,.np,.tabs{display:none}body{background:#fff;color:#000}.card{border:0}}
+header{background:linear-gradient(90deg,var(--ac),#0e5c73);box-shadow:0 2px 6px rgba(0,0,0,.18);flex-wrap:wrap;gap:6px;align-items:center}
+.card{box-shadow:0 1px 3px rgba(0,0,0,.07)}
+button{transition:filter .15s;font-weight:600}button:hover{filter:brightness(1.1)}
+summary{cursor:pointer}
+.wt{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;position:sticky;top:0;z-index:5;background:var(--bg)}
+.wt button{border-radius:999px;padding:9px 18px;background:var(--card);color:var(--tx);border:1px solid var(--bd);white-space:nowrap}
+.wt button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.beds{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.bed{border:1px solid var(--bd);border-radius:10px;padding:10px;background:var(--bg);cursor:pointer;min-height:88px}
+.bed:hover{border-color:var(--ac)}
+.bed.occ{border-left:5px solid var(--ac);background:var(--card)}
+.bed.occ b{display:block;color:var(--ac)}
+.bed.free{border-style:dashed;color:var(--mut);display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px}
+.stat{text-align:center;color:var(--mut);font-size:13px}.stat b{display:block;font-size:26px;color:var(--ac);line-height:1.2}
+.tabs{position:sticky;top:0;z-index:4;background:var(--bg);padding:6px 0}
+.tabs button{border-radius:999px;padding:7px 14px}
+@media print{.wt,.beds{display:none}}
+</style></head><body>
+<header><span>🏥 ระบบงานผู้ป่วยใน (IPD)</span><span id="who"></span></header>
+<main id="app"></main>
+<script>
+// ===== ตั้งค่า Supabase (Project Settings > API) =====
+const SUPABASE_URL="https://aseuawegiawuwuerekwh.supabase.co";
+const SUPABASE_ANON_KEY="sb_publishable_Fjb0n3Dof1B7KtIOin8H9Q_FryExySv";
+// ====================================================
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const WARDS={"อายุรกรรมชาย":8,"อายุรกรรมหญิง":8,"ศัลยกรรม":8,"กุมารเวชกรรม":6};
+const V=[['t','T °C','i'],['hr','HR','i'],['rr','RR','i'],['bp','BP','i'],['spo2','SpO₂ %','i'],['pain','Pain 0-10','i']];
+const M={
+adm:{t:'Admission Note',f:[['alg','ประวัติแพ้ยา/อาหาร (คั่นด้วย , )','i'],['cc','อาการสำคัญ/ประวัติปัจจุบัน','t'],['past','ประวัติอดีต (โรคประจำตัว/แพ้ยา/ผ่าตัด)','t'],['pers','Personal History (บุหรี่/แอลกอฮอล์)','t'],['ros','Review of Systems','t'],['pe','Physical Exam','t'],['prob','Problem/Clinical Risk','t'],['dx','Provisional Dx','i'],['tx','Treatment Plan','t'],['dc','Discharge Plan','t']]},
+order:{t:'Order Sheet',f:[['type','ประเภท',['One day','Continue','Home Med','Lab ล่วงหน้า']],['item','ยา/รายการตรวจ','i'],['det','รายละเอียด','i']]},
+prog:{t:'Progress Note',f:[['s','Subjective','t'],['o','Objective','t'],['a','Assessment','t'],['p','Plan','t'],['img','รูปภาพ/ภาพวาด','g']]},
+nurse:{t:'Nurse Note / Vital',f:[...V,['focus','Focus','i'],['ass','Assessment','t'],['int','Intervention','t'],['eva','Evaluation','t']]},
+mar:{t:'e-MAR',f:[['drug','ชื่อยา','i'],['how','วิธีใช้/มื้อ','i'],['type','ประเภท',['ปกติ','เพิ่มยา','ชะลอการให้ยา']],['by','ผู้บริหารยา','i']]},
+dtx:{t:'Diabetic Chart',f:[['dtx','DTX (mg/dL)','i'],['drug','ยา/วิธีใช้','i'],['by','ผู้ให้ยา','i']]},
+ndc:{t:'Nurse Discharge',f:[['recv','ผู้รับกลับบ้าน','i'],['way','วิธีออก',['เดินเอง','รถนั่ง','เปลนอน']],['cond','สภาพก่อนจำหน่าย',['ทุเลา','ไม่ทุเลา','เสียชีวิต']],['dtype','ประเภทการจำหน่าย','i'],['vs','Vital Signs เมื่อจำหน่าย','i'],['med','Medication','t'],['ins','คำแนะนำก่อนออก','t']]},
+dsum:{t:'Physician Discharge Summary',f:[['doc','แพทย์เจ้าของไข้','i'],['cc','อาการสำคัญ','t'],['pe','ตรวจร่างกาย/Lab','t'],['dx','Dx + ICD10','i'],['op','ผ่าตัด/หัตถการ ICD9','i'],['non','Non-OR Procedure','i']]},
+drec:{t:'Drug Reconcile',f:[['drug','ชื่อยา','i'],['how','วิธีการใช้ยา','i'],['src','สถานพยาบาลที่รับยา',['US (รพ.ของเรา)','Oth (รพ.อื่น)']],['rp','Reconciling Physician (Admission)','i'],['chk','ผู้ตรวจสอบยาก่อน Admit','i']]},
+food:{t:'สั่งอาหาร',f:[['pt','ข้อมูลผู้ป่วย (ศาสนา/น้ำหนัก/Dx/โรคประจำตัว)','t'],['ft','ประเภทอาหาร',['อาหารทั่วไป','อาหารอ่อน','อาหารเหลว','NPO','อาหารเฉพาะโรค']],['ds','อาหารเฉพาะโรค','i'],['al','รายการแพ้อาหาร','i'],['ban','อาหารห้ามทาน','i'],['sup','อาหารเสริม','i']]},
+neuro:{t:'Neurological Signs',f:[['gcs','Glasgow Coma Score (E/V/M)','i'],['pu','Pupils Score','i'],['mp','Motor Power','i']]},
+inst:{t:'Instrumentation',f:[['dev','ชื่ออุปกรณ์','i'],['pos','ตำแหน่ง','i'],['size','ขนาด','i'],['st','วันเวลาที่เริ่ม','i'],['stb','ผู้บันทึกการเริ่ม','i'],['en','วันเวลาที่สิ้นสุด','i'],['enb','ผู้บันทึกการสิ้นสุด','i'],['rs','เหตุผลที่สิ้นสุด','i'],['fr','ต้นทางที่ติดตั้ง','i']]},
+prob:{t:'Problem List',f:[['fp','Focus/Problem/Plan','t'],['go','Goals/Outcomes/Timeframe','t'],['ad','Active Date','i'],['rd','Review Date','i'],['rst','Review Status',['Active','Resolved','Continue']]]},
+lab:{t:'Lab Profile',f:[['lab','ชื่อแล็บ','i'],['res','ผลแล็บ','i'],['normal','ค่าปกติ','i'],['crit','ช่วงที่ไม่ Critical (ต่ำ-สูง เช่น 2.5-6.5)','i'],['rdate','วันที่รายงานผล','i']]},
+assess:{t:'Admission Assessment',f:[['vs','Vital Signs ก่อน Admit (T/HR/RR/BP/น้ำหนัก)','i'],['fi','ข้อมูลแรกรับ','t'],['ph','ประวัติในอดีต','t'],['ad','แบบแผนการดำเนินชีวิตประจำวัน','t'],['so','สภาพสังคมและเศรษฐกิจ','t'],['bo','สภาพร่างกายแรกรับ','t'],['mn','สภาพจิตใจแรกรับ','t'],['dp','การวางแผนการจำหน่าย','t']]},
+nmon:{t:'Nursing Monitoring',f:[['w','น้ำหนัก (kg)','i'],['h','ส่วนสูง (cm)','i'],['bmi','BMI (คำนวณอัตโนมัติ)','i'],['bp','ความดันโลหิต','i'],['rr','อัตราการหายใจ','i'],['hr','อัตราการเต้นหัวใจ','i'],['spo2','SpO₂ %','i'],['in','Intake (ml)','i'],['out','Output (ml)','i'],['pain','Pain Assessment','i']]},
+ipdd:{t:'IPD Discharge (แพทย์)',f:[['dt','ประเภทการจำหน่าย',['Improved','Not improved','Refer','Against advice','Dead']],['dd','วัน/เวลาจำหน่าย','i'],['nt','หมายเหตุ/Home Med','t']]}
+};
+const AW=()=>Object.keys(WARDS).filter(w=>ME.is_admin||(ME.wards.includes(w)&&WD.find(d=>d.name===w)?.is_open));
+const E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $=id=>document.getElementById(id);
+const fmt=d=>new Date(d).toLocaleString('th-TH');
+const AN=n=>'AN'+String(n).padStart(5,'0');
+let P=[],R=[],cur=null,tab='adm',ME=null,WD=[],US=[],wardTab=null;
+const bad=e=>{if(e){alert('ผิดพลาด: '+(e.code==='23505'?'เตียงนี้ถูกใช้แล้ว':e.message));return true}};
+const free=(w,keep)=>{const used=P.filter(p=>p.ward===w&&p.an!==keep).map(p=>p.bed);return Array.from({length:WARDS[w]},(_,i)=>String(i+1).padStart(2,'0')).filter(b=>!used.includes(b))};
+const opts=(a,sel)=>a.map(x=>`<option ${x===sel?'selected':''}>${E(x)}</option>`).join('');
+
+async function boot(){
+ const{data:{session}}=await sb.auth.getSession();
+ if(!session)return login();
+ $('who').innerHTML=E(session.user.email)+' <button class="g" style="color:#fff;border-color:#fff" onclick="sb.auth.signOut().then(boot)">ออก</button>';
+ const{data:pf}=await sb.from('profiles').select('*').eq('user_id',session.user.id).maybeSingle();
+ const{data:wd}=await sb.from('wards').select('*');
+ ME=pf;WD=wd||[];
+ if(!ME||!ME.active)return $('app').innerHTML='<div class="card">บัญชีนี้ยังไม่ได้รับสิทธิ์ใช้งาน กรุณาติดต่อผู้ดูแลระบบ</div>';
+ $('who').innerHTML=E(session.user.email)+' ('+(ME.role==='doctor'?'แพทย์':'พยาบาล')+(ME.is_admin?'/แอดมิน':'')+') '+(ME.is_admin?'<button class="g" style="color:#fff;border-color:#fff" onclick="admin()">⚙ จัดการสิทธิ์</button> ':'')+'<button class="g" style="color:#fff;border-color:#fff" onclick="sb.auth.signOut().then(boot)">ออก</button>';
+ if(ME.is_admin){const{count}=await sb.from('profiles').select('user_id',{count:'exact',head:true}).eq('active',false);if(count)$('who').innerHTML=$('who').innerHTML.replace('⚙ จัดการสิทธิ์','⚙ จัดการสิทธิ์ ('+count+' รออนุมัติ)')}
+ list();
+ live();
+}
+function login(){
+ $('who').textContent='';
+ $('app').innerHTML=`<div class="card" style="max-width:360px;margin:40px auto"><b>เข้าสู่ระบบ</b>
+ <label>อีเมล</label><input id="em" type="email"><label>รหัสผ่าน</label><input id="pw" type="password">
+ <p><button onclick="doLogin()">เข้าสู่ระบบ</button> <button class="g" onclick="signupForm()">ขอสมัครใช้งาน</button></p></div>`;
+}
+function signupForm(){
+ $('app').innerHTML=`<div class="card" style="max-width:360px;margin:40px auto"><b>ขอสมัครใช้งาน</b> <small>(ต้องรอผู้ดูแลอนุมัติและกำหนดสิทธิ์)</small>
+ <label>ชื่อ-นามสกุล</label><input id="sn"><label>อีเมล</label><input id="em" type="email"><label>รหัสผ่าน (อย่างน้อย 6 ตัว)</label><input id="pw" type="password">
+ <p><button onclick="doSignup()">สมัคร</button> <button class="g" onclick="login()">← กลับ</button></p></div>`;
+}
+async function doSignup(){
+ if(!$('sn').value||!$('em').value||$('pw').value.length<6)return alert('กรอกชื่อ อีเมล และรหัสผ่านอย่างน้อย 6 ตัว');
+ const{error}=await sb.auth.signUp({email:$('em').value,password:$('pw').value,options:{data:{full_name:$('sn').value}}});
+ if(bad(error))return;
+ await sb.auth.signOut();
+ alert('สมัครแล้ว กรุณารอผู้ดูแลอนุมัติ (ถ้าระบบส่งอีเมลยืนยัน ให้กดยืนยันก่อน)');login();
+}
+async function doLogin(){const{error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});if(!bad(error))boot()}
+
+function setW(w){wardTab=w;qs='';list()}
+function pickBed(b){const d=$('adm');d.open=true;$('bd').value=b;d.scrollIntoView({behavior:'smooth',block:'center'});$('hn').focus()}
+async function list(){
+ const{data,error}=await sb.from('patients').select('*').eq('status','admit').order('bed');
+ if(bad(error))return;P=data;
+ if(!AW().includes(wardTab))wardTab=AW()[0];
+ if(!wardTab){$('app').innerHTML='<div class="card">ยังไม่มีแผนกที่ได้รับสิทธิ์ หรือแผนกถูกปิด กรุณาติดต่อผู้ดูแลระบบ</div>';return}
+ const t0=new Date();t0.setHours(0,0,0,0);const iso=t0.toISOString();
+ const{count:dcn}=await sb.from('patients').select('an',{count:'exact',head:true}).eq('status','dc').gte('dc_at',iso);
+ const cap=AW().reduce((a,w)=>a+WARDS[w],0);
+ const st=(l,v)=>`<div class="stat">${l}<b>${v}</b></div>`;
+ $('app').innerHTML=`<div class="card"><div class="grid">${st('ผู้ป่วยในขณะนี้',P.length)}${st('เตียงว่าง',(cap-P.length)+' / '+cap)}${st('ครองเตียง',(cap?Math.round(P.length/cap*100):0)+'%')}${st('รับวันนี้',P.filter(p=>p.admitted_at>=iso).length)}${st('จำหน่ายวันนี้',dcn||0)}</div></div>
+ <div class="card np"><input id="qs" placeholder="🔍 ค้นหา HN / ชื่อ / AN (ทุกแผนก)" value="${E(qs)}" oninput="qs=this.value;$('wl').innerHTML=wardsHtml()"></div>
+ <div class="wt np">${AW().map(w=>`<button class="${w===wardTab?'on':''}" onclick="setW('${w}')">${WD.find(d=>d.name===w)?.is_open===false?'🔒 ':''}${w} (${P.filter(p=>p.ward===w).length}/${WARDS[w]})</button>`).join('')}</div>
+ <details id="adm" class="card np"><summary><b>＋ Admit ผู้ป่วยใหม่ เข้า${wardTab}</b></summary><div class="grid" style="margin-top:8px">
+ <div><label>HN</label><input id="hn"></div><div><label>ชื่อ-นามสกุล</label><input id="nm"></div>
+ <div><label>สิทธิการรักษา</label><input id="rt"></div><div><label>Dx แรกรับ</label><input id="dx"></div>
+ <div><label>แพทย์เจ้าของไข้</label><input id="dr"></div>
+ <div><label>เตียงว่าง</label><select id="bd">${opts(free(wardTab))}</select></div></div>
+ <p><button onclick="admit()">Admit</button></p></details>
+ <div id="wl">${wardsHtml()}</div>`;
+}
+function wardsHtml(){
+ const q=qs.toLowerCase();
+ const row=p=>`<tr><td>${p.bed}</td>${q?`<td>${E(p.ward)}</td>`:''}<td>${E(p.hn)}/${AN(p.an)}</td><td>${E(p.name)}</td><td>${fmt(p.admitted_at)}</td><td>${E(p.doctor)}</td><td>${E(p.dx)}</td><td><button onclick="open_(${p.an})">เปิด</button></td></tr>`;
+ const th=`<tr><th>เตียง</th>${q?'<th>แผนก</th>':''}<th>HN/AN</th><th>ชื่อ</th><th>Admit</th><th>แพทย์</th><th>Dx</th><th></th></tr>`;
+ if(q){
+  const r=P.filter(p=>AW().includes(p.ward)&&[p.hn,p.name,AN(p.an)].join(' ').toLowerCase().includes(q));
+  return `<div class="card"><b>ผลการค้นหา (${r.length})</b><div class="tbl"><table>${th}${r.map(row).join('')||'<tr><td colspan=8>ไม่พบผู้ป่วย</td></tr>'}</table></div></div>`;
+ }
+ const w=wardTab,all=P.filter(p=>p.ward===w).sort((a,b)=>a.bed.localeCompare(b.bed));
+ const beds=Array.from({length:WARDS[w]},(_,i)=>{const b=String(i+1).padStart(2,'0'),p=all.find(x=>x.bed===b);
+  return p?`<div class="bed occ" onclick="open_(${p.an})"><b>เตียง ${b}</b>${E(p.name)}<br><small>${E(p.hn)}${p.dx?' · '+E(p.dx):''}</small></div>`
+  :`<div class="bed free" onclick="pickBed('${b}')"><span>เตียง ${b}<br>ว่าง · กดเพื่อ Admit</span></div>`}).join('');
+ return `<div class="card"><b>${w}</b> <small>· ผู้ป่วย ${all.length} ราย · เตียงว่าง ${WARDS[w]-all.length}</small><div class="beds" style="margin-top:10px">${beds}</div></div>
+ <div class="card"><b>รายชื่อผู้ป่วย ${w}</b><div class="tbl"><table>${th}${all.map(row).join('')||'<tr><td colspan=7>ไม่มีผู้ป่วย</td></tr>'}</table></div></div>`;
+}
+function bedSel(){$('bd').innerHTML=opts(free($('wd').value))}
+async function admit(){
+ if(!$('hn').value||!$('nm').value||!$('bd').value)return alert('กรอก HN, ชื่อ และเลือกเตียง');
+ const{error}=await sb.from('patients').insert({hn:$('hn').value,name:$('nm').value,rights:$('rt').value,dx:$('dx').value,doctor:$('dr').value,ward:wardTab,bed:$('bd').value});
+ if(!bad(error))list();
+}
+let ALL=[],PT=null,ed=null,dp=30,dq='',qs='',dirty=false,TIMER=null;
+const VIEWS={emr:'EMR ประวัติ',drug:'Drug Profile',gr:'Graphic Sheet'};
+const ofm=m=>ALL.filter(r=>r.module===m);
+const go=t=>{tab=t;ed=null;dirty=false;draw()};
+const tb=(k,t)=>`<button class="${k===tab?'':'g'}" onclick="go('${k}')">${t}</button>`;
+const algs=()=>[...new Set(ofm('adm').flatMap(r=>(r.data.alg||'').split(/[,;/\n]+/).map(x=>x.trim()).filter(x=>x.length>1)))];
+const isCrit=d=>{const m=/^\s*([\d.]+)\s*[-–]\s*([\d.]+)\s*$/.exec(d.crit||'');const v=parseFloat(d.res);return !!m&&!isNaN(v)&&(v<+m[1]||v>+m[2])};
+function open_(an){cur=an;tab='adm';detail()}
+async function detail(){
+ const{data:p,error}=await sb.from('patients').select('*').eq('an',cur).maybeSingle();
+ if(bad(error))return;if(!p||p.status==='cancelled')return list();
+ const{data:rs,error:e2}=await sb.from('records').select('*').eq('an',cur).is('deleted_at',null).order('created_at',{ascending:false});
+ if(bad(e2))return;PT=p;ALL=rs;ed=null;dirty=false;draw();
+}
+function ent(r,m,act){
+ const done=PT.status!=='admit',c=m==='lab'&&isCrit(r.data);
+ return `<div class="ent ${r.off?'off':''}" ${c?'style="border-left:4px solid var(--wr);padding-left:8px"':''}><small>${fmt(r.created_at)}${r.created_by_name?' · โดย '+E(r.created_by_name):''}</small>${c?' <b style="color:var(--wr)">⚠ CRITICAL</b>':''} ${M[m].f.map(([k,l,t])=>r.data[k]?(t==='g'?`<div><b>${l}:</b><br><img src="${E(r.data[k])}" style="max-width:100%;border:1px solid var(--bd)"></div>`:`<div><b>${l}:</b> ${E(r.data[k])}</div>`):'').join('')}${act&&!done&&cw(m)?`<span class="np"><button class="g" onclick="edit(${r.id})">แก้ไข</button> ${m==='order'&&r.data.type==='Continue'&&!r.off?`<button class="g" onclick="off(${r.id})">OFF ยา</button> `:''}${m==='order'?`<button class="g" onclick="again(${r.id})">สั่งซ้ำ</button> `:''}<button class="g" onclick="del(${r.id})">ลบ</button></span>`:''}</div>`;
+}
+function labCum(){
+ const r=ofm('lab').slice().reverse(),dk=x=>x.data.rdate||fmt(x.created_at);
+ const ds=[...new Set(r.map(dk))],ls=[...new Set(r.map(x=>x.data.lab))];
+ return `<div class="card tbl"><b>เปรียบเทียบผลแล็บ (Cumulative)</b><table><tr><th>แล็บ</th><th>ค่าปกติ</th>${ds.map(d=>`<th>${E(d)}</th>`).join('')}</tr>${ls.map(l=>{const n=r.find(x=>x.data.lab===l).data;return `<tr><td>${E(l)}</td><td>${E(n.normal)}</td>${ds.map(d=>{const x=r.find(y=>y.data.lab===l&&dk(y)===d);return `<td ${x&&isCrit(x.data)?'style="color:var(--wr);font-weight:700"':''}>${E(x?.data.res||'')}</td>`}).join('')}</tr>`}).join('')||'<tr><td>ยังไม่มีข้อมูล</td></tr>'}</table></div>`;
+}
+function chart(t,k,lo,hi,u){
+ const r=ofm('nurse').slice().reverse().filter(x=>parseFloat(x.data[k])>0);
+ if(r.length<2)return `<div><b>${t}</b> <small>ต้องมีอย่างน้อย 2 ค่า</small></div>`;
+ const W=500,H=120,pts=r.map((x,i)=>[30+i*(W-60)/(r.length-1),H-12-(Math.min(hi,Math.max(lo,parseFloat(x.data[k])))-lo)/(hi-lo)*(H-26),x.data[k]]);
+ return `<div><b>${t}</b> <small>(${u})</small><svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;display:block"><polyline fill="none" stroke="var(--ac)" stroke-width="2" points="${pts.map(p=>p[0]+','+p[1]).join(' ')}"/>${pts.map(p=>`<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--ac)"/><text x="${p[0]}" y="${p[1]-6}" font-size="10" text-anchor="middle" fill="currentColor">${E(p[2])}</text>`).join('')}</svg></div>`;
+}
+function view(){
+ if(tab==='emr')return Object.keys(M).map(m=>{const r=ofm(m);return r.length?`<div class="card"><b>${M[m].t}</b>${r.map(x=>ent(x,m)).join('')}</div>`:''}).join('')||'<div class="card">ยังไม่มีข้อมูล</div>';
+ if(tab==='gr')return `<div class="card"><b>Graphic Sheet</b>${chart('อุณหภูมิ','t',35,41,'°C')}${chart('ชีพจร','hr',40,160,'/นาที')}${chart('อัตราการหายใจ','rr',8,40,'/นาที')}${chart('SpO₂','spo2',80,100,'%')}</div><div class="card tbl"><table><tr><th>เวลา</th>${V.map(v=>`<th>${v[1]}</th>`).join('')}</tr>${ofm('nurse').slice().reverse().map(x=>`<tr><td>${fmt(x.created_at)}</td>${V.map(v=>`<td>${E(x.data[v[0]])}</td>`).join('')}</tr>`).join('')}</table></div>`;
+ const lim=Date.now()-dp*864e5;
+ const rows=[...ofm('order').filter(x=>x.data.type!=='Lab ล่วงหน้า').map(x=>({n:x.data.item,h:[x.data.det,x.data.type].filter(Boolean).join(' · '),d:x.created_at,off:x.off})),...ofm('mar').map(x=>({n:x.data.drug,h:x.data.how,d:x.created_at}))].filter(x=>x.n&&new Date(x.d)>lim&&x.n.toLowerCase().includes(dq.toLowerCase()));
+ return `<div class="card"><b>Drug Profile</b><div class="grid np"><div><label>ช่วงเวลา</label><select onchange="dp=+this.value;draw()">${[[30,'1 เดือน'],[90,'3 เดือน'],[180,'6 เดือน'],[365,'1 ปี']].map(([v,t])=>`<option value="${v}" ${v===dp?'selected':''}>${t}</option>`).join('')}</select></div><div><label>กรองชื่อยา</label><input value="${E(dq)}" onchange="dq=this.value;draw()"></div></div><div class="tbl"><table><tr><th>ยา</th><th>วิธีใช้</th><th>วันที่</th></tr>${rows.map(x=>`<tr class="${x.off?'off':''}"><td>${E(x.n)}</td><td>${E(x.h)}</td><td>${fmt(x.d)}</td></tr>`).join('')||'<tr><td colspan=3>ไม่พบข้อมูล</td></tr>'}</table></div></div>`;
+}
+function draw(){
+ const p=PT,done=p.status!=='admit',pn=ofm('prog')[0],isV=VIEWS[tab],al=algs();
+ $('app').innerHTML=`<div class="card"><div class="np"><button class="g" onclick="list()">← กลับ</button></div>
+ <h3>${E(p.name)} <small>HN ${E(p.hn)} · ${AN(p.an)}</small></h3>
+ <div>${p.ward} เตียง ${p.bed} · Admit ${fmt(p.admitted_at)} · สิทธิ ${E(p.rights)} · แพทย์ ${E(p.doctor)} · Dx ${E(p.dx)} ${done?'· <b>จำหน่ายแล้ว</b>':''}</div>
+ ${al.length?`<div style="margin-top:6px;color:var(--wr)"><b>⚠ ประวัติแพ้:</b> ${al.map(E).join(', ')}</div>`:''}
+ ${done?'':`<p class="np"><select id="mv" style="width:auto" onchange="$('mb').innerHTML=opts(free(this.value,${p.an}))">${opts(AW(),p.ward)}</select> <select id="mb" style="width:auto">${opts(free(p.ward,p.an),p.bed)}</select> <button class="g" onclick="move()">ย้ายวอร์ด/เตียง</button> <button class="g" onclick="dc()">จำหน่าย</button> ${ME.role==='nurse'&&!ME.is_admin?'':`<button class="r" onclick="cancel()">ยกเลิก Admit</button>`}</p>`}</div>
+ <div class="tabs np">${Object.entries(M).map(([k,m])=>tb(k,m.t)).join('')}${Object.entries(VIEWS).map(([k,t])=>tb(k,t)).join('')}<button class="g" onclick="print()">🖨 พิมพ์</button></div>
+ ${isV?view():`${tab==='order'&&pn?`<div class="card np"><b>Progress Note ล่าสุด</b>${ent(pn,'prog')}</div>`:''}<div class="card"><b>${M[tab].t}</b>
+ ${done||!cw(tab)?'':`<div class="grid np" style="margin-top:8px">${M[tab].f.map(([k,l,t])=>`<div style="${t==='t'||t==='g'?'grid-column:1/-1':''}"><label>${l}</label>${t==='g'?`<canvas id="f_${k}" width="600" height="300" style="width:100%;max-width:600px;border:1px solid var(--bd);touch-action:none;background:#fff"></canvas><input type="file" accept="image/*" onchange="loadImg(this)" style="width:auto"> <button type="button" class="g" onclick="clr()">ล้างภาพ</button>`:Array.isArray(t)?`<select id="f_${k}">${opts(t)}</select>`:t==='t'?`<textarea id="f_${k}" rows=2></textarea>`:`<input id="f_${k}">`}</div>`).join('')}</div><p class="np"><button onclick="add()">${ed?'บันทึกการแก้ไข':'บันทึก'}</button>${ed?' <button class="g" onclick="go(tab)">ยกเลิกแก้ไข</button>':''}</p>`}
+ ${ofm(tab).map(r=>ent(r,tab,1)).join('')||'<p>ยังไม่มีข้อมูล</p>'}</div>${tab==='lab'?labCum():''}`}`;
+ if(tab==='prog')initCanvas();
+ if(tab==='nmon'&&$('f_bmi')){$('f_bmi').readOnly=true;['w','h'].forEach(k=>{$('f_'+k).oninput=()=>{const w=+$('f_w').value,h=+$('f_h').value/100;$('f_bmi').value=w&&h?(w/h/h).toFixed(1):''}})}
+}
+function initCanvas(){
+ const c=$('f_img');if(!c)return;const x=c.getContext('2d');
+ x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.lineWidth=2;x.lineCap='round';x.strokeStyle='#111';let d=false;
+ const pos=e=>{const b=c.getBoundingClientRect();return[(e.clientX-b.left)*c.width/b.width,(e.clientY-b.top)*c.height/b.height]};
+ c.onpointerdown=e=>{d=true;const[a,b]=pos(e);x.beginPath();x.moveTo(a,b);c.setPointerCapture(e.pointerId)};
+ c.onpointermove=e=>{if(!d)return;const[a,b]=pos(e);x.lineTo(a,b);x.stroke();dirty=true};
+ c.onpointerup=()=>{d=false};
+}
+function loadImg(i){const f=i.files[0];if(!f)return;const im=new Image();im.onload=()=>{const c=$('f_img'),x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);const s=Math.min(c.width/im.width,c.height/im.height);x.drawImage(im,0,0,im.width*s,im.height*s);dirty=true};im.src=URL.createObjectURL(f)}
+function clr(){initCanvas();dirty=false}
+function edit(id){const r=ALL.find(x=>x.id===id);ed=id;draw();M[tab].f.forEach(([k])=>{const e=$('f_'+k);if(e&&e.tagName!=='CANVAS')e.value=r.data[k]||''});scrollTo(0,0)}
+async function move(){if(!$('mb').value)return alert('ไม่มีเตียงว่าง');const{error}=await sb.from('patients').update({ward:$('mv').value,bed:$('mb').value}).eq('an',cur);if(!bad(error))detail()}
+async function dc(){if(confirm('จำหน่ายผู้ป่วย?')){const{error}=await sb.from('patients').update({status:'dc',dc_at:new Date().toISOString()}).eq('an',cur);if(!bad(error))detail()}}
+// ยกเลิก Admit = ซ่อนจากระบบ (soft delete) ต้องมีเหตุผล แอดมินกู้คืน/ลบถาวรได้จากหน้าจัดการสิทธิ์
+async function cancel(){
+ const why=(prompt('ระบุเหตุผลการยกเลิก Admit (จำเป็น)')||'').trim();
+ if(!why)return alert('ต้องระบุเหตุผล');
+ if(!confirm('ยกเลิก Admit? ข้อมูลจะถูกซ่อนจากระบบ (แอดมินกู้คืนได้จากถังขยะ)'))return;
+ const{data,error}=await sb.from('patients').update({status:'cancelled',cancel_reason:why,cancelled_at:new Date().toISOString()}).eq('an',cur).select();
+ if(bad(error))return;
+ if(!data.length)return alert('ไม่สำเร็จ (ตรวจสอบสิทธิ์)');
+ cur=null;list();
+}
+async function add(){
+ const d={};let any=0;
+ for(const[k,,t]of M[tab].f){
+  const e=$('f_'+k);
+  if(t==='g'){if(dirty){d[k]=e.toDataURL('image/jpeg',.6);any=1}else if(ed)d[k]=ALL.find(x=>x.id===ed).data[k]||''}
+  else{d[k]=e.value;if(d[k]&&!Array.isArray(t))any=1}
+ }
+ if(!any)return alert('กรอกข้อมูลอย่างน้อย 1 ช่อง');
+ if(tab==='order'&&!ed){
+  const txt=((d.item||'')+' '+(d.det||'')).toLowerCase(),hit=algs().find(a=>txt.includes(a.toLowerCase()));
+  if(hit&&!confirm('⚠ ผู้ป่วยมีประวัติแพ้ "'+hit+'"\nยืนยันสั่งรายการนี้?'))return;
+ }
+ const{error}=await(ed?sb.from('records').update({data:d}).eq('id',ed):sb.from('records').insert({an:cur,module:tab,data:d}));
+ if(!bad(error))detail();
+}
+async function again(id){const r=ALL.find(x=>x.id===id);const{error}=await sb.from('records').insert({an:cur,module:'order',data:r.data});if(!bad(error))detail()}
+async function off(id){const{error}=await sb.from('records').update({off:true}).eq('id',id);if(!bad(error))detail()}
+async function del(id){if(confirm('ลบรายการ? (แอดมินกู้คืนได้)')){const{error}=await sb.from('records').update({deleted_at:new Date().toISOString()}).eq('id',id);if(!bad(error))detail()}}
+
+const DOC=['adm','order','prog','drec','dsum','ipdd','lab','food'],NUR=['nurse','mar','dtx','ndc','drec','food','neuro','inst','prob','lab','assess','nmon'];
+const cw=m=>(ME.role==='doctor'?DOC:NUR).includes(m);
+function live(){
+ if(window.LIVE)return;
+ window.LIVE=sb.channel('live').on('postgres_changes',{event:'*',schema:'public'},()=>{
+  clearTimeout(TIMER);TIMER=setTimeout(()=>{
+   const a=document.activeElement;
+   if((a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))||ed||dirty||($('hn')&&($('hn').value||$('nm').value))||[...document.querySelectorAll('[id^=f_]')].some(e=>e.tagName!=='SELECT'&&e.value))return;
+   if($('wl'))list();else if(document.querySelector('.tabs'))detail();
+  },800);
+ }).subscribe();
+}
+async function admin(){
+ const[u,w,a,tp,tr]=await Promise.all([
+  sb.from('profiles').select('*').order('active').order('full_name'),
+  sb.from('wards').select('*'),
+  sb.from('audit_log').select('*').order('at',{ascending:false}).limit(100),
+  sb.from('patients').select('*').eq('status','cancelled').order('cancelled_at',{ascending:false}),
+  sb.from('records').select('id,an,module,deleted_at').not('deleted_at','is',null).order('deleted_at',{ascending:false}).limit(50)]);
+ for(const x of[u,w,a,tp,tr])if(bad(x.error))return;
+ US=u.data;WD=w.data||[];
+ const ALLW=Object.keys(WARDS);
+ $('app').innerHTML=`<div class="card"><button class="g" onclick="list()">← กลับ</button> <button class="g" onclick="backup()">⬇ สำรองข้อมูล (ไฟล์ JSON)</button></div>
+ <div class="card"><b>เปิด/ปิดแผนก</b> <small>(แผนกที่ปิด: ผู้ใช้ทั่วไปมองไม่เห็นและรับผู้ป่วยไม่ได้ แอดมินยังเห็น)</small>
+ <div class="grid" style="margin-top:8px">${WD.map(d=>`<label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" style="width:auto" ${d.is_open?'checked':''} onchange="setWard('${d.name}',this.checked)">${d.name} ${d.is_open?'(เปิด)':'(ปิด)'}</label>`).join('')}</div></div>
+ <div class="card tbl"><b>ผู้ใช้และสิทธิ์</b><table><tr><th>ชื่อที่แสดง</th><th>อีเมล</th><th>บทบาท</th><th>แอดมิน</th><th>แผนกที่เข้าถึงได้</th><th>ใช้งาน</th><th></th></tr>${US.map((x,i)=>`<tr ${x.active?'':'style="background:rgba(185,28,28,.12)"'}><td><input id="n${i}" value="${E(x.full_name)}"></td><td><small>${E(x.email||'')}</small></td><td><select id="r${i}">${opts(['doctor','nurse'],x.role)}</select></td><td><input type="checkbox" style="width:auto" id="m${i}" ${x.is_admin?'checked':''}></td><td>${ALLW.map(k=>`<label style="color:var(--tx)"><input type="checkbox" style="width:auto" class="w${i}" value="${k}" ${x.wards.includes(k)?'checked':''}> ${k}</label>`).join('<br>')}</td><td><input type="checkbox" style="width:auto" id="a${i}" ${x.active?'checked':''}></td><td><button onclick="saveU(${i})">บันทึก</button></td></tr>`).join('')}</table></div>
+ <div class="card tbl"><b>ถังขยะ</b><table><tr><th>รายการ</th><th>เหตุผล/เวลา</th><th></th></tr>${tp.data.map(x=>`<tr><td>ผู้ป่วย ${E(x.name)} (${E(x.hn)} · ${AN(x.an)})</td><td>${E(x.cancel_reason)}<br><small>${fmt(x.cancelled_at)}</small></td><td><button class="g" onclick="restoreP(${x.an})">กู้คืน</button> <button class="r" onclick="purgeP(${x.an})">ลบถาวร</button></td></tr>`).join('')}${tr.data.map(x=>`<tr><td>บันทึก ${E(M[x.module]?.t||x.module)} (${AN(x.an)})</td><td><small>${fmt(x.deleted_at)}</small></td><td><button class="g" onclick="restoreR(${x.id})">กู้คืน</button></td></tr>`).join('')||''}${tp.data.length+tr.data.length?'':'<tr><td colspan=3>ว่าง</td></tr>'}</table></div>
+ <div class="card tbl"><b>Audit log (100 รายการล่าสุด)</b><table><tr><th>เวลา</th><th>ผู้ใช้</th><th>ตาราง</th><th>การกระทำ</th><th>รายละเอียด</th></tr>${a.data.map(x=>{const d=x.new||x.old||{};return `<tr><td>${fmt(x.at)}</td><td>${E(x.user_name)}</td><td>${x.table_name}</td><td>${x.op}</td><td>${E(d.module||d.name||d.full_name||'')} ${E(d.an?AN(d.an):'')}</td></tr>`}).join('')}</table></div>`;
+}
+async function setWard(n,v){const{error}=await sb.from('wards').update({is_open:v}).eq('name',n);if(!bad(error))admin()}
+async function saveU(i){
+ const u=US[i],wards=[...document.querySelectorAll('.w'+i+':checked')].map(x=>x.value);
+ if(u.user_id===ME.user_id&&!$('m'+i).checked&&!confirm('ถอนสิทธิ์แอดมินของตัวเอง? จะเข้าหน้านี้ไม่ได้อีก'))return;
+ const{error}=await sb.from('profiles').update({full_name:$('n'+i).value,role:$('r'+i).value,is_admin:$('m'+i).checked,wards,active:$('a'+i).checked}).eq('user_id',u.user_id);
+ if(!bad(error)){alert('บันทึกแล้ว');u.user_id===ME.user_id?boot():admin()}
+}
+async function restoreP(an){const{error}=await sb.from('patients').update({status:'admit',cancel_reason:null,cancelled_at:null}).eq('an',an);if(!bad(error))admin()}
+async function purgeP(an){if(confirm('ลบผู้ป่วยรายนี้และข้อมูลทั้งหมดถาวร? กู้คืนไม่ได้')){const{error}=await sb.from('patients').delete().eq('an',an);if(!bad(error))admin()}}
+async function restoreR(id){const{error}=await sb.from('records').update({deleted_at:null}).eq('id',id);if(!bad(error))admin()}
+async function allRows(t){let o=[],f=0;for(;;){const{data,error}=await sb.from(t).select('*').range(f,f+999);if(error){bad(error);return null}o=o.concat(data);if(data.length<1000)return o;f+=1000}}
+async function backup(){
+ const p=await allRows('patients'),r=await allRows('records'),a=await allRows('audit_log');
+ if(!p||!r||!a)return;
+ const l=document.createElement('a');
+ l.href=URL.createObjectURL(new Blob([JSON.stringify({at:new Date().toISOString(),patients:p,records:r,audit_log:a})],{type:'application/json'}));
+ l.download='ipd-backup-'+new Date().toISOString().slice(0,10)+'.json';l.click();
+}
+boot();
+</script></body></html>
